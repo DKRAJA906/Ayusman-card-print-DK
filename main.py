@@ -56,7 +56,7 @@ def crop_card(image, box):
 @app.get("/", include_in_schema=False)
 async def home():
 
-    html_file = BASE_DIR / "index.html"
+    html_file = BASE_DIR /"static"/ "index.html"
 
     if not html_file.exists():
         raise HTTPException(
