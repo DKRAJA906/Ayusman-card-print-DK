@@ -1,9 +1,10 @@
 
 import io
+from pathlib import Path
+
 import fitz
 from PIL import Image, ImageDraw
 
-from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 
@@ -14,7 +15,7 @@ app = FastAPI(
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# A4 Size in Points
+# A4 Size
 A4_WIDTH = 595.28
 A4_HEIGHT = 841.89
 
@@ -24,80 +25,76 @@ MM_TO_PT = 72 / 25.4
 CARD_WIDTH = 85.60 * MM_TO_PT
 CARD_HEIGHT = 53.98 * MM_TO_PT
 
-# Card gap and top margin
+# Printing Position
 GAP = 5 * MM_TO_PT
 TOP_MARGIN = 10 * MM_TO_PT
 
-# Original sample PDF dimensions: 850 x 300 points
-# Front and Back crop positions
+# Original PDF Crop Positions
 FRONT_BOX = (105, 95, 411, 249)
 BACK_BOX = (445, 95, 752, 249)
 
 
 # Rounded Corner Function
-
-
-def rounded_card(img, radius=30):
+# No extra border or outline
+def rounded_card(img, radius_pt=9, render_scale=3):
 
     img = img.convert("RGBA")
 
     w, h = img.size
 
-    # High quality anti-aliased mask
-    scale = 4
+    # High resolution mask
+    factor = 4
 
     mask = Image.new(
         "L",
-        (w * scale, h * scale),
+        (w * factor, h * factor),
         0
     )
 
     draw = ImageDraw.Draw(mask)
 
+    radius = int(
+        radius_pt * render_scale * factor
+    )
+
     draw.rounded_rectangle(
-        (0, 0, w * scale - 1, h * scale - 1),
-        radius=radius * scale,
+        (
+            0,
+            0,
+            w * factor - 1,
+            h * factor - 1
+        ),
+        radius=radius,
         fill=255
     )
 
+    # Smooth mask
     mask = mask.resize(
         (w, h),
         Image.Resampling.LANCZOS
     )
 
+    # Only corner cutting
+    # No border is drawn
     img.putalpha(mask)
-
-    # Thin border integrated inside card edge
-    border = ImageDraw.Draw(img)
-
-    border.rounded_rectangle(
-        (2, 2, w - 3, h - 3),
-        radius=radius,
-        outline=(90, 90, 90, 255),
-        width=2
-    )
 
     return img
 
 
-
-
-# Crop Function
+# Crop Card Function
 def crop_card(image, box, scale_x, scale_y):
 
     x1, y1, x2, y2 = box
 
-    coords = (
+    return image.crop((
         round(x1 * scale_x),
         round(y1 * scale_y),
         round(x2 * scale_x),
         round(y2 * scale_y)
-    )
-
-    return image.crop(coords)
+    ))
 
 
-# Home Page
+# Website Home Page
 @app.get("/", include_in_schema=False)
 async def home():
 
@@ -132,7 +129,7 @@ async def ayushman_print(
     file: UploadFile = File(...)
 ):
 
-    if not file.filename.lower().endswith(".pdf"):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
 
         raise HTTPException(
             status_code=400,
@@ -160,7 +157,7 @@ async def ayushman_print(
 
     try:
 
-        # Open Uploaded PDF
+        # Open PDF
         doc = fitz.open(
             stream=data,
             filetype="pdf"
@@ -172,18 +169,24 @@ async def ayushman_print(
 
         page = doc[0]
 
-        # Check Sample PDF Layout
+        # Check Supported PDF Template
         if (
             abs(page.rect.width - 850) > 2
             or abs(page.rect.height - 300) > 2
         ):
+
             raise ValueError(
                 "PDF layout does not match the supported sample template"
             )
 
         # High Quality Rendering
+        render_scale = 3
+
         pix = page.get_pixmap(
-            matrix=fitz.Matrix(3, 3),
+            matrix=fitz.Matrix(
+                render_scale,
+                render_scale
+            ),
             alpha=False
         )
 
@@ -193,11 +196,11 @@ async def ayushman_print(
             pix.samples
         )
 
-        # Calculate Rendering Scale
+        # Rendering Scale
         scale_x = pix.width / page.rect.width
         scale_y = pix.height / page.rect.height
 
-        # Extract Front and Back
+        # Extract Front
         front = crop_card(
             image,
             FRONT_BOX,
@@ -205,6 +208,7 @@ async def ayushman_print(
             scale_y
         )
 
+        # Extract Back
         back = crop_card(
             image,
             BACK_BOX,
@@ -212,9 +216,18 @@ async def ayushman_print(
             scale_y
         )
 
-        # Rounded Corners
-        front = rounded_card(front)
-        back = rounded_card(back)
+        # Apply Natural Rounded Corners
+        front = rounded_card(
+            front,
+            radius_pt=9,
+            render_scale=render_scale
+        )
+
+        back = rounded_card(
+            back,
+            radius_pt=9,
+            render_scale=render_scale
+        )
 
         # Create A4 PDF
         output = fitz.open()
@@ -224,7 +237,7 @@ async def ayushman_print(
             height=A4_HEIGHT
         )
 
-        # Calculate Horizontal Position
+        # Both Cards at Top
         total_width = (
             CARD_WIDTH * 2 + GAP
         )
@@ -233,12 +246,11 @@ async def ayushman_print(
             A4_WIDTH - total_width
         ) / 2
 
-        # Cards at Top of A4 Page
         start_y = TOP_MARGIN
 
         cards = [front, back]
 
-        # Insert Both Cards
+        # Insert Cards
         for i, card in enumerate(cards):
 
             buffer = io.BytesIO()
@@ -247,8 +259,6 @@ async def ayushman_print(
                 buffer,
                 format="PNG"
             )
-
-            buffer.seek(0)
 
             x = start_x + i * (
                 CARD_WIDTH + GAP
@@ -269,7 +279,7 @@ async def ayushman_print(
 
             buffer.close()
 
-        # Generate Final PDF
+        # Final PDF
         result = output.tobytes(
             garbage=4,
             deflate=True
