@@ -165,12 +165,23 @@ async def ayushman_print(
             height=A4_HEIGHT
         )
 
-        # Card Size
-        card_width = 250
+        
+# Standard PVC Card Size
+# 85.60 x 53.98 mm
 
-        card_height = card_width * (
-            front.height / front.width
-        )
+card_width = 85.60 * 72 / 25.4
+card_height = 53.98 * 72 / 25.4
+
+gap = 14
+
+total_width = card_width * 2 + gap
+
+# Center horizontally
+start_x = (A4_WIDTH - total_width) / 2
+
+# Keep cards at top
+start_y = 25
+
 
         gap = 14
 
