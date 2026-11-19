@@ -183,9 +183,7 @@ async def ayushman_print(
             A4_WIDTH - total_width
         ) / 2
 
-        start_y = (
-            A4_HEIGHT - card_height
-        ) / 2
+        start_y = 25
 
         cards = [front, back]
 
