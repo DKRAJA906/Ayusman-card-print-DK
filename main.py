@@ -1,27 +1,35 @@
 
 import io
-from pathlib import Path
-
 import fitz
 from PIL import Image, ImageDraw
 
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 
 app = FastAPI(
     title="DK JAN SUVIDHA KENDRA",
-    description="Ayushman Card Print Tool"
+    description="Ayushman PVC Card Print"
 )
 
-# Project directory
 BASE_DIR = Path(__file__).resolve().parent
 
-# A4 Page Size (Points)
+# A4 Size in Points
 A4_WIDTH = 595.28
 A4_HEIGHT = 841.89
 
-# Sample Ayushman PDF Crop Positions
-# These positions match the PDF you provided.
+# Standard PVC Card Size
+MM_TO_PT = 72 / 25.4
+
+CARD_WIDTH = 85.60 * MM_TO_PT
+CARD_HEIGHT = 53.98 * MM_TO_PT
+
+# Card gap and top margin
+GAP = 5 * MM_TO_PT
+TOP_MARGIN = 10 * MM_TO_PT
+
+# Original sample PDF dimensions: 850 x 300 points
+# Front and Back crop positions
 FRONT_BOX = (105, 95, 411, 249)
 BACK_BOX = (445, 95, 752, 249)
 
@@ -46,22 +54,32 @@ def rounded_card(img, radius=24):
     return img
 
 
-# Crop Card Function
-def crop_card(image, box):
+# Crop Function
+def crop_card(image, box, scale_x, scale_y):
 
-    return image.crop(box)
+    x1, y1, x2, y2 = box
+
+    coords = (
+        round(x1 * scale_x),
+        round(y1 * scale_y),
+        round(x2 * scale_x),
+        round(y2 * scale_y)
+    )
+
+    return image.crop(coords)
 
 
-# Home Page Route
+# Home Page
 @app.get("/", include_in_schema=False)
 async def home():
 
-    html_file = BASE_DIR /"static"/ "index.html"
+    html_file = BASE_DIR / "static" / "index.html"
 
     if not html_file.exists():
+
         raise HTTPException(
             status_code=500,
-            detail="index.html file not found"
+            detail="static/index.html file not found"
         )
 
     return FileResponse(
@@ -76,17 +94,18 @@ async def health():
 
     return {
         "status": "online",
-        "service": "DK Ayushman Card Print"
+        "service": "DK Ayushman PVC Print"
     }
 
 
-# Ayushman PDF Print API
+# Ayushman Card Print API
 @app.post("/api/ayushman-a4")
 async def ayushman_print(
     file: UploadFile = File(...)
 ):
 
     if not file.filename.lower().endswith(".pdf"):
+
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed"
@@ -95,12 +114,14 @@ async def ayushman_print(
     data = await file.read()
 
     if not data:
+
         raise HTTPException(
             status_code=400,
             detail="Empty PDF file"
         )
 
     if not data.startswith(b"%PDF-"):
+
         raise HTTPException(
             status_code=400,
             detail="Invalid PDF file"
@@ -118,9 +139,19 @@ async def ayushman_print(
         )
 
         if len(doc) < 1:
-            raise ValueError("PDF has no pages")
+
+            raise ValueError("PDF page not found")
 
         page = doc[0]
+
+        # Check Sample PDF Layout
+        if (
+            abs(page.rect.width - 850) > 2
+            or abs(page.rect.height - 300) > 2
+        ):
+            raise ValueError(
+                "PDF layout does not match the supported sample template"
+            )
 
         # High Quality Rendering
         pix = page.get_pixmap(
@@ -134,24 +165,24 @@ async def ayushman_print(
             pix.samples
         )
 
-        # Crop positions are based on
-        # the supplied sample PDF (850 x 300 points).
-        scale_x = image.width / page.rect.width
-        scale_y = image.height / page.rect.height
-
-        front_box = tuple(
-            round(v * (scale_x if i % 2 == 0 else scale_y))
-            for i, v in enumerate(FRONT_BOX)
-        )
-
-        back_box = tuple(
-            round(v * (scale_x if i % 2 == 0 else scale_y))
-            for i, v in enumerate(BACK_BOX)
-        )
+        # Calculate Rendering Scale
+        scale_x = pix.width / page.rect.width
+        scale_y = pix.height / page.rect.height
 
         # Extract Front and Back
-        front = crop_card(image, front_box)
-        back = crop_card(image, back_box)
+        front = crop_card(
+            image,
+            FRONT_BOX,
+            scale_x,
+            scale_y
+        )
+
+        back = crop_card(
+            image,
+            BACK_BOX,
+            scale_x,
+            scale_y
+        )
 
         # Rounded Corners
         front = rounded_card(front)
@@ -165,36 +196,17 @@ async def ayushman_print(
             height=A4_HEIGHT
         )
 
-        
-# Standard PVC Card Size
-# 85.60 x 53.98 mm
-
-card_width = 85.60 * 72 / 25.4
-card_height = 53.98 * 72 / 25.4
-
-gap = 14
-
-total_width = card_width * 2 + gap
-
-# Center horizontally
-start_x = (A4_WIDTH - total_width) / 2
-
-# Keep cards at top
-start_y = 25
-
-
-        gap = 14
-
+        # Calculate Horizontal Position
         total_width = (
-            card_width * 2 + gap
+            CARD_WIDTH * 2 + GAP
         )
 
-        # Center Alignment
         start_x = (
             A4_WIDTH - total_width
         ) / 2
 
-        start_y = 25
+        # Cards at Top of A4 Page
+        start_y = TOP_MARGIN
 
         cards = [front, back]
 
@@ -211,21 +223,23 @@ start_y = 25
             buffer.seek(0)
 
             x = start_x + i * (
-                card_width + gap
+                CARD_WIDTH + GAP
             )
 
             rect = fitz.Rect(
                 x,
                 start_y,
-                x + card_width,
-                start_y + card_height
+                x + CARD_WIDTH,
+                start_y + CARD_HEIGHT
             )
 
             pdf_page.insert_image(
                 rect,
                 stream=buffer.getvalue(),
-                keep_proportion=True
+                keep_proportion=False
             )
+
+            buffer.close()
 
         # Generate Final PDF
         result = output.tobytes(
@@ -238,7 +252,7 @@ start_y = 25
             media_type="application/pdf",
             headers={
                 "Content-Disposition":
-                'attachment; filename="DK_Ayushman_Card.pdf"'
+                'attachment; filename="DK_Ayushman_PVC_Card.pdf"'
             }
         )
 
@@ -246,7 +260,7 @@ start_y = 25
 
         raise HTTPException(
             status_code=400,
-            detail=f"PDF Processing Error: {str(e)}"
+            detail=str(e)
         )
 
     finally:
@@ -256,3 +270,5 @@ start_y = 25
 
         if output is not None:
             output.close()
+
+        await file.close()
