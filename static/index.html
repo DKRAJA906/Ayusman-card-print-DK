@@ -1,0 +1,223 @@
+
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DK Ayushman Card Print</title>
+
+<style>
+*{box-sizing:border-box}
+
+body{
+ margin:0;
+ font-family:Arial,sans-serif;
+ background:#edf2f7;
+ color:#243247;
+}
+
+header{
+ background:linear-gradient(120deg,#087b50,#064e3b);
+ color:white;
+ text-align:center;
+ padding:25px 10px;
+}
+
+header h2{
+ margin:0;
+ font-size:24px;
+}
+
+header p{
+ margin:8px 0 0;
+ font-size:14px;
+}
+
+.container{
+ max-width:480px;
+ margin:35px auto;
+ padding:15px;
+}
+
+.card{
+ background:white;
+ padding:25px;
+ border-radius:16px;
+ box-shadow:0 5px 25px #00000012;
+}
+
+h3{
+ text-align:center;
+ margin-top:0;
+}
+
+.upload{
+ border:2px dashed #16a36b;
+ border-radius:12px;
+ padding:30px 12px;
+ text-align:center;
+ background:#f4fff9;
+}
+
+.upload input{
+ width:100%;
+ margin-top:18px;
+}
+
+button{
+ width:100%;
+ border:0;
+ padding:15px;
+ margin-top:18px;
+ border-radius:9px;
+ font-size:16px;
+ font-weight:bold;
+ cursor:pointer;
+}
+
+#download{
+ background:#087b50;
+ color:white;
+}
+
+#download:disabled{
+ background:#9ca3af;
+ cursor:not-allowed;
+}
+
+#status{
+ text-align:center;
+ margin-top:15px;
+ font-size:14px;
+}
+
+footer{
+ text-align:center;
+ padding:20px;
+ color:#64748b;
+ font-size:13px;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h2>DK JAN SUVIDHA KENDRA</h2>
+<p>आयुष्मान कार्ड प्रिंट पोर्टल</p>
+</header>
+
+<div class="container">
+<div class="card">
+
+<h3>आयुष्मान कार्ड PDF प्रिंट</h3>
+
+<form id="printForm">
+
+<div class="upload">
+<h3>📄 PDF अपलोड करें</h3>
+<p>अपना आयुष्मान कार्ड PDF चुनें</p>
+
+<input
+ type="file"
+ id="pdfFile"
+ accept=".pdf,application/pdf"
+ required
+>
+</div>
+
+<button type="submit" id="download">
+⬇ DIRECT DOWNLOAD PDF
+</button>
+
+</form>
+
+<div id="status"></div>
+
+</div>
+</div>
+
+<footer>
+© DK JAN SUVIDHA KENDRA
+<br>
+Aapki Seva Mein Hamesha Tatpar
+</footer>
+
+<script>
+
+const form = document.getElementById("printForm");
+const fileInput = document.getElementById("pdfFile");
+const button = document.getElementById("download");
+const statusBox = document.getElementById("status");
+
+form.addEventListener("submit", async function(e){
+
+ e.preventDefault();
+
+ const file = fileInput.files[0];
+
+ if(!file){
+  alert("पहले PDF फाइल चुनें");
+  return;
+ }
+
+ if(file.type !== "application/pdf"){
+  alert("केवल PDF फाइल अपलोड करें");
+  return;
+ }
+
+ button.disabled = true;
+ button.innerText = "कृपया प्रतीक्षा करें...";
+ statusBox.innerText = "आपका कार्ड तैयार हो रहा है...";
+
+ try{
+
+  const data = new FormData();
+  data.append("file",file);
+
+  const response = await fetch(
+   "/api/ayushman-a4",
+   {
+    method:"POST",
+    body:data
+   }
+  );
+
+  if(!response.ok){
+   throw new Error("PDF तैयार नहीं हो सकी");
+  }
+
+  const blob = await response.blob();
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  a.href = url;
+  a.download = "DK_Ayushman_Card.pdf";
+
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+
+  statusBox.innerText = "PDF डाउनलोड शुरू हो गया है।";
+
+ }catch(error){
+
+  statusBox.innerText = "Error: " + error.message;
+
+ }finally{
+
+  button.disabled = false;
+  button.innerText = "⬇ DIRECT DOWNLOAD PDF";
+
+ }
+
+});
+
+</script>
+
+</body>
+</html>
