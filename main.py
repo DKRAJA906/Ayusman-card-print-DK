@@ -35,23 +35,37 @@ BACK_BOX = (445, 95, 752, 249)
 
 
 # Rounded Corner Function
-def rounded_card(img, radius=24):
+
+def rounded_card(img, radius=45, border_width=8):
 
     img = img.convert("RGBA")
 
+    # Rounded Corner Mask
     mask = Image.new("L", img.size, 0)
 
     draw = ImageDraw.Draw(mask)
 
     draw.rounded_rectangle(
-        (0, 0, img.width - 1, img.height - 1),
+        (2, 2, img.width - 3, img.height - 3),
         radius=radius,
         fill=255
     )
 
+    # Apply Rounded Corners
     img.putalpha(mask)
 
+    # Visible Rounded Border
+    border = ImageDraw.Draw(img)
+
+    border.rounded_rectangle(
+        (4, 4, img.width - 5, img.height - 5),
+        radius=radius,
+        outline=(70, 70, 70, 255),
+        width=border_width
+    )
+
     return img
+
 
 
 # Crop Function
